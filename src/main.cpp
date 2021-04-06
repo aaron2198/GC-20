@@ -9,7 +9,7 @@
 #include <EthernetClient.h>
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
-#include <WifiManager.h>
+#include <WiFiManager.h>
 #include <EEPROM.h>
 #include "SPI.h"
 #include "Adafruit_GFX.h"
@@ -58,12 +58,27 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
 const int interruptPin = 5;
 
-long count[61];
-long fastCount[6]; // arrays to store running counts
-long slowCount[181];
+//time in ms for polling counter
+const int geigerStoreInterval = 200;
+//size = intervalWidth / geigerStoreInterval (in seconds) + 1
+const int osc_size = 6;
+const int fc_size = 26;
+const int c_size = 301;
+const int sc_size = 901;
+
+//IntervalWidth = 1
+long oneSecondCount[osc_size];
+//IntervalWidth = 5
+long fastCount[fc_size]; // arrays to store running counts
+//IntervalWidth = 60
+long count[c_size];
+//IntervalWidth =180
+long slowCount[sc_size];
+
 int i = 0;         // array elements
 int j = 0;
 int k = 0;
+int l = 0;
 
 int page = 0;
 
@@ -414,13 +429,13 @@ void loop()
   if (page == 0) // homepage
   {
     currentMillis = millis();
-    if (currentMillis - previousMillis >= 1000)
+    if (currentMillis - previousMillis >= geigerStoreInterval)
     {
       previousMillis = currentMillis;
 
       batteryUpdateCounter ++;     
 
-      if (batteryUpdateCounter == 30){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
+      if (batteryUpdateCounter == 300){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
 
         batteryInput = analogRead(A0);
         batteryInput = constrain(batteryInput, 590, 800);
@@ -442,44 +457,82 @@ void loop()
         Serial.println(batteryPercent);
       }
 
-      count[i] = currentCount;
+      //
+      oneSecondCount[i] = currentCount;
       i++;
       fastCount[j] = currentCount; // keep concurrent arrays of counts. Use only one depending on user choice
       j++;
-      slowCount[k] = currentCount;
+      count[k] = currentCount;
       k++;
+      slowCount[l] = currentCount;
+      l++;
 
-      if (i == 61)
+
+      if (i == osc_size)  
       {
         i = 0;
       }
 
-      if (j == 6)
+      if (j == fc_size)
       {
         j = 0;
       }
 
-      if (k == 181)
+      if (k == c_size)
       {
         k = 0;
       }
-
-      if (integrationMode == 2)
+      if (l == sc_size)
       {
-        averageCount = (currentCount - slowCount[k]) / 3;
+        l = 0;
       }
 
+      //1s
+      if(integrationMode == 0)
+      {
+        averageCount = (currentCount - oneSecondCount[i]) * 60;
+        Serial.print(currentCount);
+        Serial.print("-");
+        Serial.print(oneSecondCount[i]);
+        Serial.print("*");
+        Serial.println("60");
+      }
+      //5s
       if (integrationMode == 1)
       {
         averageCount = (currentCount - fastCount[j]) * 12;
+        Serial.print(currentCount);
+        Serial.print("-");
+        Serial.print(fastCount[j]);
+        Serial.print("*");
+        Serial.println("12");
       }
-
-      else if (integrationMode == 0)
+      //60s
+      if (integrationMode == 2)
       {
-        averageCount = currentCount - count[i]; // count[i] stores the value from 60 seconds ago
+        averageCount = currentCount - count[k]; // count[i] stores the value from 60 seconds ago
+        Serial.print(currentCount);
+        Serial.print("-");
+        Serial.println(count[k]);
       }
+      //180 slowCount[k] is a datapoint from 1800ms ago
+      else if (integrationMode == 3)
+      {
+        averageCount = (currentCount - slowCount[l]) / 3;
+        Serial.print(currentCount);
+        Serial.print("-");
+        Serial.print(slowCount[l]);
+        Serial.print("/");
+        Serial.println("3");
+      }
+      Serial.println("Average before dead time");
+      Serial.println(averageCount);
 
       averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
+
+      Serial.println("CPM:");
+      Serial.println(averageCount);
+      Serial.println("-------------------------");
 
       if (doseUnits == 0)
       {
@@ -629,33 +682,37 @@ void loop()
       if ((x > 162 && x < 238) && (y > 259 && y < 318))
       {
         integrationMode ++;
-        if (integrationMode == 3)
+        if (integrationMode == 4)
         {
           integrationMode = 0;
         }
         currentCount = 0;
         previousCount = 0;
-        for (int a = 0; a < 61; a++) // reset counts when integretation speed is changed
+        for (int a = 0; a < osc_size; a++) // reset counts when integretation speed is changed
         {
-          count[a] = 0;
+          oneSecondCount[a] = 0;
         }
-        for (int b = 0; b < 6; b++)
+        for (int b = 0; b < fc_size; b++)
         {
           fastCount[b] = 0;
         }
-        for (int c = 0; c < 181; c++)
+        for (int c = 0; c < c_size; c++)
         {
-          slowCount[c] = 0;
+          count[c] = 0;
+        }
+        for (int d = 0; d < sc_size; d++){
+          slowCount[d] = 0;
         }
         if (integrationMode == 0) // change button based on touch and previous state
         {
+
           tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
           tft.setFont(&FreeSans12pt7b);
           tft.setTextSize(1);
           tft.setCursor(180, 283);
           tft.println("INT");
-          tft.setCursor(177, 309);
-          tft.println("60 s");
+          tft.setCursor(184, 309);
+          tft.println("1 s");
         }
         else if (integrationMode == 1)
         {
@@ -668,6 +725,16 @@ void loop()
           tft.println("5 s");
         }
         else if (integrationMode == 2)
+        {
+          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
+          tft.setFont(&FreeSans12pt7b);
+          tft.setTextSize(1);
+          tft.setCursor(180, 283);
+          tft.println("INT");
+          tft.setCursor(177, 309);
+          tft.println("60 s");
+        }
+        else if (integrationMode == 3)
         {
           tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
           tft.setFont(&FreeSans12pt7b);
@@ -778,17 +845,21 @@ void loop()
       {
         currentCount = 0;
         previousCount = 0;
-        for (int a = 0; a < 61; a++)
+        for (int a = 0; a < osc_size; a++)
         {
-          count[a] = 0; // counts need to be reset to prevent errorenous readings
+          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
         }
-        for (int b = 0; b < 6; b++)
+        for (int b = 0; b < fc_size; b++)
         {
           fastCount[b] = 0;
         }
-        for (int c = 0; c < 181; c++)
+        for (int c = 0; c < c_size; c++)
         {
-          slowCount[c] = 0;
+          count[c] = 0;
+        }
+        for (int d = 0; d < sc_size; d++)
+        {
+          slowCount[d] = 0;
         }
         page = 0;
         drawHomePage();
@@ -1211,17 +1282,21 @@ void loop()
         drawHomePage();
         currentCount = 0;
         previousCount = 0;
-        for (int a = 0; a < 60; a++)
+        for (int a = 0; a < osc_size; a++)
         {
-          count[a] = 0; // counts need to be reset to prevent errorenous readings
+          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
         }
-        for (int b = 0; b < 5; b++)
+        for (int b = 0; b < fc_size; b++)
         {
           fastCount[b] = 0;
         }
-        for (int c = 0; c < 180; c++)
+        for (int c = 0; c < c_size; c++)
         {
-          slowCount[c] = 0;
+          count[c] = 0;
+        }
+        for (int d = 0; d < sc_size; d++)
+        {
+          slowCount[d] = 0;
         }
       }
       else if ((x > 145 && x < 235) && (y > 271 && y < 315))
@@ -1309,17 +1384,21 @@ void loop()
         drawHomePage();
         currentCount = 0;
         previousCount = 0;
-        for (int a = 0; a < 60; a++)
+        for (int a = 0; a < osc_size; a++)
         {
-          count[a] = 0; // counts need to be reset to prevent errorenous readings
+          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
         }
-        for (int b = 0; b < 5; b++)
+        for (int b = 0; b < fc_size; b++)
         {
           fastCount[b] = 0;
         }
-        for (int c = 0; c < 180; c++)
+        for (int c = 0; c < c_size; c++)
         {
-          slowCount[c] = 0;
+          count[c] = 0;
+        }
+        for (int d = 0; d < sc_size; d++)
+        {
+          slowCount[d] = 0;
         }
       }
     }
@@ -1465,8 +1544,8 @@ void drawHomePage()
     tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
     tft.setCursor(180, 283);
     tft.println("INT");
-    tft.setCursor(177, 309);
-    tft.println("60 s");
+    tft.setCursor(184, 309);
+    tft.println("1 s");
   }
   else if (integrationMode == 1)
   {
@@ -1477,6 +1556,14 @@ void drawHomePage()
     tft.println("5 s");
   }
   else if (integrationMode == 2)
+  {
+    tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
+    tft.setCursor(180, 283);
+    tft.println("INT");
+    tft.setCursor(177, 309);
+    tft.println("60 s");
+  }
+  else if (integrationMode == 3)
   {
     tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
     tft.setCursor(180, 283);
