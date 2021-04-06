@@ -117,7 +117,7 @@ int batteryUpdateCounter = 29;
 // EEPROM variables
 const int saveUnits = 0;
 const int saveAlertThreshold = 1; // Addresses for storing settings data in the EEPROM
-const int saveCalibration = 2;
+const int saveCalibration = 12;
 const int saveDeviceMode = 3;
 const int saveLoggingMode = 4;
 const int saveSSIDLen = 5;
@@ -346,7 +346,7 @@ void setup()
 
   doseUnits = EEPROM.read(saveUnits);
   alarmThreshold = EEPROM.read(saveAlertThreshold);
-  conversionFactor = EEPROM.read(saveCalibration);
+  conversionFactor = EEPROMReadlong(saveCalibration);
   deviceMode = EEPROM.read(saveDeviceMode);
   isLogging = EEPROM.read(saveLoggingMode);
   addr = EEPROMReadlong(96);
@@ -996,9 +996,9 @@ void loop()
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
-        if (EEPROM.read(saveCalibration) != conversionFactor)
+        if ((unsigned int)EEPROMReadlong(saveCalibration) != conversionFactor)
         {
-          EEPROM.write(saveCalibration, conversionFactor);
+          EEPROMWritelong(saveCalibration, conversionFactor);
           EEPROM.commit();
         }
         drawSettingsPage();
