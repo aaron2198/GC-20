@@ -123,7 +123,7 @@ const int saveSSIDLen = 5;
 const int savePWLen = 6;
 const int saveIDLen = 7;
 const int saveAPILen = 8;
-const int saveCalibration = 100;
+const int saveCalibration = 90;
 
 // Data Logging variables
 int addr = 200;                 // starting address for data logging
@@ -306,6 +306,26 @@ const unsigned char backBitmap [] PROGMEM = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+const unsigned char resetBitmap [] PROGMEM = {
+	// 'Refresh-icon, 64x32px
+	0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x3f, 0xfc, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x0f, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f, 0xff, 0xff, 0xc0, 0x00, 0x00,
+	0x00, 0x00, 0x1f, 0xff, 0xff, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xff, 0xff, 0xf0, 0x00, 0x00,
+	0x00, 0x00, 0x3f, 0xff, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xff, 0xff, 0xfc, 0x00, 0x00,
+	0x00, 0x00, 0x7f, 0xff, 0xff, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xc0, 0x0f, 0x00, 0x00,
+	0x00, 0x00, 0x7f, 0xff, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0xff, 0xfc, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x7f, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7f, 0xfe, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x03, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7f, 0xc0, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x7f, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xfe, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x3f, 0xff, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0xff, 0xfe, 0x00, 0x00,
+	0x00, 0x00, 0xf0, 0x03, 0xff, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xfe, 0x00, 0x00,
+	0x00, 0x00, 0x3f, 0xff, 0xff, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x1f, 0xff, 0xff, 0xfc, 0x00, 0x00,
+	0x00, 0x00, 0x0f, 0xff, 0xff, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x07, 0xff, 0xff, 0xf8, 0x00, 0x00,
+	0x00, 0x00, 0x03, 0xff, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xf0, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x3f, 0xfc, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00
+};
+
 void drawHomePage();              // page 0
 void drawSettingsPage();          // page 1
 void drawUnitsPage();             // page 2
@@ -321,11 +341,18 @@ void drawBackButton();
 void drawCancelButton();
 void drawCloseButton();
 void drawBlankDialogueBox();
+void drawResetButton();
 
 long EEPROMReadlong(long address);
 void EEPROMWritelong(int address, long value); // logging functions
 void createJsonFile();
 void clearLogs();
+void clearCount();
+void clearLogs();
+void setSettings();
+void setDefaultSettings();
+void setDefaultDevice();
+void getSettings();
 
 void setup()
 {
@@ -344,44 +371,7 @@ void setup()
 
   EEPROM.begin(4096);   // initialize emulated EEPROM sector with 4 kb
 
-  doseUnits = EEPROM.read(saveUnits);
-  alarmThreshold = EEPROM.read(saveAlertThreshold);
-  deviceMode = EEPROM.read(saveDeviceMode);
-  isLogging = EEPROM.read(saveLoggingMode);
-  addr = EEPROMReadlong(96);
-  conversionFactor = EEPROMReadlong(saveCalibration);
-
-  SSIDLength = EEPROM.read(saveSSIDLen);
-  passwordLength = EEPROM.read(savePWLen);
-  channelIDLength = EEPROM.read(saveIDLen);
-  writeAPILength = EEPROM.read(saveAPILen);
-
-
-  for (int i = 10; i < 10 + SSIDLength; i++)
-  {
-    ssid[i - 10] = EEPROM.read(i);
-  }
-  Serial.println(ssid);
-// 30-10 = 20
-  for (int j = 30; j < 30 + passwordLength; j++)
-  {
-    password[j - 30] = EEPROM.read(j);
-  }
-  Serial.println(password);
-
-// 50-30 = 20
-  for (int k = 50; k < 50 + channelIDLength; k++)
-  {
-    channelID[k - 50] = EEPROM.read(k);
-  }
-  Serial.println(channelID);
-
-// 70-50 = 20
-  for (int l = 70; l < 70 + writeAPILength; l++)
-  {
-    channelAPIkey[l - 70] = EEPROM.read(l);
-  }
-  Serial.println(channelAPIkey);
+  getSettings();
 
   attachInterrupt(interruptPin, isr, FALLING);
 
@@ -846,24 +836,14 @@ void loop()
 
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button. draw homepage, reset counts and go back
       {
-        currentCount = 0;
-        previousCount = 0;
-        for (int a = 0; a < osc_size; a++)
-        {
-          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
-        }
-        for (int b = 0; b < fc_size; b++)
-        {
-          fastCount[b] = 0;
-        }
-        for (int c = 0; c < c_size; c++)
-        {
-          count[c] = 0;
-        }
-        for (int d = 0; d < sc_size; d++)
-        {
-          slowCount[d] = 0;
-        }
+        clearCount();
+        page = 0;
+        drawHomePage();
+      }
+      else if ((x > tft.width() - (4 + 62) && x < (tft.width() - (4 + 62) + 132)) && (y > 271 && y < 315))
+      {
+        clearCount();
+        setDefaultSettings();
         page = 0;
         drawHomePage();
       }
@@ -1650,6 +1630,7 @@ void drawSettingsPage()
   tft.println("LOGGING AND WIFI");
 
   drawBackButton();
+  drawResetButton();
 }
 
 void drawUnitsPage()
@@ -1910,6 +1891,12 @@ void drawBackButton(){
   tft.drawBitmap(4, 271, backBitmap, 62, 45, ILI9341_WHITE);
 }
 
+void drawResetButton(){
+  tft.fillRoundRect(tft.width() - (4 + 62), 271, 62, 45, 3, 0x3B8F);
+  tft.drawRoundRect(tft.width() - (4 + 62), 271, 62, 45, 3, ILI9341_WHITE);
+  tft.drawBitmap(tft.width() - (4 + 62), 278, resetBitmap, 62, 45, ILI9341_WHITE);
+}
+
 void drawFrame(){
   tft.fillRect(2, 21, 236, 298, ILI9341_BLACK);
   tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
@@ -2038,6 +2025,28 @@ void drawBlankDialogueBox()
 
 }
 
+void clearCount()
+{
+  currentCount = 0;
+  previousCount = 0;
+  for (int a = 0; a < osc_size; a++)
+  {
+    oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
+  }
+  for (int b = 0; b < fc_size; b++)
+  {
+    fastCount[b] = 0;
+  }
+  for (int c = 0; c < c_size; c++)
+  {
+    count[c] = 0;
+  }
+  for (int d = 0; d < sc_size; d++)
+  {
+    slowCount[d] = 0;
+  }
+}
+
 void clearLogs()
 {
   for (int j = 100; j < 4000; j ++)
@@ -2053,4 +2062,76 @@ void clearLogs()
   EEPROM.write(saveLoggingMode, 0);
   EEPROM.commit();
   isLogging = 0;
+}
+
+void setSettings(){
+  EEPROM.write(saveUnits, doseUnits);
+  EEPROM.write(saveAlertThreshold, alarmThreshold);
+  EEPROM.write(saveDeviceMode, deviceMode);
+  EEPROM.write(saveLoggingMode, isLogging);
+  EEPROMWritelong(96, addr);
+  EEPROMWritelong(saveCalibration, conversionFactor);
+}
+
+void setDefaultSettings() 
+{
+  // Set each parameter
+  // call setSettings
+  doseUnits = 0;
+  alarmThreshold = 5;
+  deviceMode = 0;
+  isLogging = 1;
+  conversionFactor = 175;
+  setSettings();
+
+}
+
+void setDefaultDevice() 
+{
+  //Default settings
+  setDefaultSettings();
+  //ClearLogs
+  clearLogs();
+}
+
+void getSettings()
+{
+  doseUnits = EEPROM.read(saveUnits);
+  alarmThreshold = EEPROM.read(saveAlertThreshold);
+  deviceMode = EEPROM.read(saveDeviceMode);
+  isLogging = EEPROM.read(saveLoggingMode);
+  addr = EEPROMReadlong(96);
+  conversionFactor = EEPROMReadlong(saveCalibration);
+
+  SSIDLength = EEPROM.read(saveSSIDLen);
+  passwordLength = EEPROM.read(savePWLen);
+  channelIDLength = EEPROM.read(saveIDLen);
+  writeAPILength = EEPROM.read(saveAPILen);
+
+
+  for (int i = 10; i < 10 + SSIDLength; i++)
+  {
+    ssid[i - 10] = EEPROM.read(i);
+  }
+  Serial.println(ssid);
+// 30-10 = 20
+  for (int j = 30; j < 30 + passwordLength; j++)
+  {
+    password[j - 30] = EEPROM.read(j);
+  }
+  Serial.println(password);
+
+// 50-30 = 20
+  for (int k = 50; k < 50 + channelIDLength; k++)
+  {
+    channelID[k - 50] = EEPROM.read(k);
+  }
+  Serial.println(channelID);
+
+// 70-50 = 20
+  for (int l = 70; l < 70 + writeAPILength; l++)
+  {
+    channelAPIkey[l - 70] = EEPROM.read(l);
+  }
+  Serial.println(channelAPIkey);
 }
