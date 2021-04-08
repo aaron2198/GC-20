@@ -117,13 +117,13 @@ int batteryUpdateCounter = 29;
 // EEPROM variables
 const int saveUnits = 0;
 const int saveAlertThreshold = 1; // Addresses for storing settings data in the EEPROM
-const int saveCalibration = 12;
 const int saveDeviceMode = 3;
 const int saveLoggingMode = 4;
 const int saveSSIDLen = 5;
 const int savePWLen = 6;
 const int saveIDLen = 7;
 const int saveAPILen = 8;
+const int saveCalibration = 100;
 
 // Data Logging variables
 int addr = 200;                 // starting address for data logging
@@ -346,34 +346,37 @@ void setup()
 
   doseUnits = EEPROM.read(saveUnits);
   alarmThreshold = EEPROM.read(saveAlertThreshold);
-  conversionFactor = EEPROMReadlong(saveCalibration);
   deviceMode = EEPROM.read(saveDeviceMode);
   isLogging = EEPROM.read(saveLoggingMode);
   addr = EEPROMReadlong(96);
+  conversionFactor = EEPROMReadlong(saveCalibration);
 
   SSIDLength = EEPROM.read(saveSSIDLen);
   passwordLength = EEPROM.read(savePWLen);
   channelIDLength = EEPROM.read(saveIDLen);
   writeAPILength = EEPROM.read(saveAPILen);
 
+
   for (int i = 10; i < 10 + SSIDLength; i++)
   {
     ssid[i - 10] = EEPROM.read(i);
   }
   Serial.println(ssid);
-
+// 30-10 = 20
   for (int j = 30; j < 30 + passwordLength; j++)
   {
     password[j - 30] = EEPROM.read(j);
   }
   Serial.println(password);
 
+// 50-30 = 20
   for (int k = 50; k < 50 + channelIDLength; k++)
   {
     channelID[k - 50] = EEPROM.read(k);
   }
   Serial.println(channelID);
 
+// 70-50 = 20
   for (int l = 70; l < 70 + writeAPILength; l++)
   {
     channelAPIkey[l - 70] = EEPROM.read(l);
