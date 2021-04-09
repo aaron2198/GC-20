@@ -118,7 +118,7 @@ bool canceled = false; // cancel context
 bool ledSwitch = 1;
 bool buzzerSwitch = 1;
 bool wasTouched;
-int integrationMode = 0; // 0 = medium, 1 = fast, 2 == slow;
+int integrationMode = 0; // 0 = 1s, 1 = 5s, 2 == 60s, 3 == 180s;
 
 bool doseUnits = 0; // 0 = Sievert, 1 = Rem
 unsigned int alarmThreshold = 5;
@@ -1785,11 +1785,11 @@ void drawCancelButton()
 
 void drawDialogueExitButton()
 {
-  tft.fillRoundRect(4, 271, 62, 45, 3, 0x3B8F);
+  tft.fillRoundRect(4, 271, 62, 45, 3, RED);
   tft.drawRoundRect(4, 271, 62, 45, 3, ILI9341_WHITE);
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(6, 302);
-  tft.println("    X    ");
+  tft.println(" Exit");
 }
 
 void drawCloseButton()
