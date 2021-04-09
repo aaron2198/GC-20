@@ -43,6 +43,8 @@ XPT2046_Touchscreen ts(CS_PIN);
 #define WIFITIMEOUT 60
 //RefreshRate time in milliseconds between geiger counts and home page updates
 #define REFRESHRATE 200
+//Tube Deadtime
+#define DEADTIME 100
 
 // WiFi variables
 unsigned long currentUploadTime;
@@ -1713,7 +1715,7 @@ void drawDeviceModePage()
 
 void isr() // interrupt service routine
 {
-  if ((micros() - 200) > previousIntMicros){
+  if ((micros() - DEADTIME) > previousIntMicros){
     currentCount++;
     cumulativeCount++;
   }
