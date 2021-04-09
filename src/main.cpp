@@ -39,6 +39,9 @@ XPT2046_Touchscreen ts(CS_PIN);
 #define WHITE 0xFFFF
 #define DOSEBACKGROUND 0x0455
 
+// Wifi Timeout in seconds
+#define WIFITIMEOUT 60
+
 // WiFi variables
 unsigned long currentUploadTime;
 unsigned long previousUploadTime;
@@ -1016,8 +1019,7 @@ void loop()
         WiFiManagerParameter write_api("1", "Write API", writeAPISt, 20);
         wifiManager.addParameter(&channel_id);
         wifiManager.addParameter(&write_api);
-        wifiManager.setTimeout(60);
-
+        wifiManager.setTimeout(WIFITIMEOUT);
         wifiManager.startConfigPortal("GC20");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
         strcpy(channelIDSt, channel_id.getValue());
