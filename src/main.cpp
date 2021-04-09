@@ -94,6 +94,10 @@ long homeRefreshRate = REFRESHRATE;
 long homeRefreshPrev;
 long homeRefreshCur;
 
+long battRefreshRate = REFRESHRATE;
+long battRefreshPrev;
+long battRefreshCur;
+
 unsigned long currentMicros;
 unsigned long previousMicros;
 
@@ -2076,8 +2080,10 @@ void gc()
 
 void batteryUpdate()
 {
-  if (currentMillis - previousMillis >= geigerStoreInterval)
+  battRefreshCur = millis();
+  if (battRefreshCur - battRefreshPrev >= REFRESHRATE)
   {
+    battRefreshPrev = battRefreshCur;
     if (batteryUpdateCounter == 300){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
       batteryInput = analogRead(A0);
       batteryInput = constrain(batteryInput, 590, 800);
