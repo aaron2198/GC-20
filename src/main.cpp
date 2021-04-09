@@ -376,6 +376,7 @@ void getSettings();
 
 void gc();
 void batteryUpdate();
+void buzzerAndLED();
 
 void setup()
 {
@@ -465,6 +466,7 @@ void loop()
   batteryUpdateCounter ++;
   batteryUpdate();
   gc();
+  buzzerAndLED();
   if (page == 0) // homepage
   {
     homeRefreshCur = millis();
@@ -577,22 +579,6 @@ void loop()
       Serial.println(currentCount);
     }
     // end of millis()-controlled block that runs once every second. The rest of the code on page 0 runs every loop
-    if (currentCount > previousCount)
-    {
-      if (ledSwitch)
-        digitalWrite(D3, HIGH); // trigger buzzer and led if they are activated
-      if (buzzerSwitch)
-        digitalWrite(D0, HIGH);
-      previousCount = currentCount;
-      previousMicros = micros();
-    }
-    currentMicros = micros();
-    if (currentMicros - previousMicros >= 200)
-    {
-      digitalWrite(D3, LOW);
-      digitalWrite(D0, LOW);
-      previousMicros = currentMicros;
-    }
 
     if (touchHandler()){
       if ((x > 162 && x < 238) && (y > 259 && y < 318))
@@ -2104,5 +2090,25 @@ void batteryUpdate()
       Serial.println(batteryInput);
       Serial.println(batteryPercent);
     }
+  }
+}
+
+void buzzerAndLED()
+{
+  if (currentCount > previousCount)
+  {
+    if (ledSwitch)
+      digitalWrite(D3, HIGH); // trigger buzzer and led if they are activated
+    if (buzzerSwitch)
+      digitalWrite(D0, HIGH);
+    previousCount = currentCount;
+    previousMicros = micros();
+  }
+  currentMicros = micros();
+  if (currentMicros - previousMicros >= 200)
+  {
+    digitalWrite(D3, LOW);
+    digitalWrite(D0, LOW);
+    previousMicros = currentMicros;
   }
 }
