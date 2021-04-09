@@ -41,6 +41,8 @@ XPT2046_Touchscreen ts(CS_PIN);
 
 // Wifi Timeout in seconds
 #define WIFITIMEOUT 60
+//RefreshRate time in milliseconds between geiger counts and home page updates
+#define REFRESHRATE 200
 
 // WiFi variables
 unsigned long currentUploadTime;
@@ -61,8 +63,8 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
 const int interruptPin = 5;
 
-//time in ms for polling counter
-const int geigerStoreInterval = 200;
+//time in ms for polling counter, update REFRESHRATE macro to sync with display refresh
+const int geigerStoreInterval = REFRESHRATE;
 //size = intervalWidth / geigerStoreInterval (in seconds) + 1
 const int osc_size = 6;
 const int fc_size = 26;
@@ -87,6 +89,11 @@ int page = 0;
 
 long currentMillis;
 long previousMillis;
+
+long homeRefreshRate = REFRESHRATE;
+long homeRefreshPrev;
+long homeRefreshCur;
+
 unsigned long currentMicros;
 unsigned long previousMicros;
 
@@ -143,6 +150,7 @@ int interval = 5;
 unsigned long intervalMillis;
 unsigned long startMillis;
 unsigned long elapsedTime;
+
 int progress;
 float cpm;
 bool completed = 0;
@@ -360,6 +368,9 @@ void setDefaultSettings();
 void setDefaultDevice();
 void getSettings();
 
+void gc();
+void batteryUpdate();
+
 void setup()
 {
   Serial.begin(38400);
@@ -409,7 +420,7 @@ void setup()
         if ((x > 4 && x < 62) && (y > 271 && y < 315)) //Cancel connecting
           {
             page = 0;
-            clearCount();
+            //clearCount();
             WiFi.disconnect();
             WiFi.mode( WIFI_OFF );                // turn off wifi
             WiFi.forceSleepBegin();
@@ -444,127 +455,16 @@ void setup()
 
 void loop()
 {
+  currentMillis = millis();
+  batteryUpdateCounter ++;
+  batteryUpdate();
+  gc();
   if (page == 0) // homepage
   {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= geigerStoreInterval)
+    homeRefreshCur = millis();
+    if (homeRefreshCur - homeRefreshPrev >= homeRefreshRate)
     {
-      previousMillis = currentMillis;
-
-      batteryUpdateCounter ++;     
-
-      if (batteryUpdateCounter == 300){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
-
-        batteryInput = analogRead(A0);
-        batteryInput = constrain(batteryInput, 590, 800);
-        batteryPercent = map(batteryInput, 590, 800, 0, 100);
-        batteryMapped = map(batteryPercent, 100, 0, 212, 233);
-
-        tft.fillRect(212, 6, 22, 10, ILI9341_BLACK);
-        if (batteryPercent < 10)
-        {
-          tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_RED);
-        }
-        else
-        {
-          tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
-        }
-        
-        batteryUpdateCounter = 0;
-        Serial.println(batteryInput);
-        Serial.println(batteryPercent);
-      }
-
-      //
-      oneSecondCount[i] = currentCount;
-      i++;
-      fastCount[j] = currentCount; // keep concurrent arrays of counts. Use only one depending on user choice
-      j++;
-      count[k] = currentCount;
-      k++;
-      slowCount[l] = currentCount;
-      l++;
-
-
-      if (i == osc_size)  
-      {
-        i = 0;
-      }
-
-      if (j == fc_size)
-      {
-        j = 0;
-      }
-
-      if (k == c_size)
-      {
-        k = 0;
-      }
-      if (l == sc_size)
-      {
-        l = 0;
-      }
-
-      //1s
-      if(integrationMode == 0)
-      {
-        averageCount = (currentCount - oneSecondCount[i]) * 60;
-        Serial.print(currentCount);
-        Serial.print("-");
-        Serial.print(oneSecondCount[i]);
-        Serial.print("*");
-        Serial.println("60");
-      }
-      //5s
-      if (integrationMode == 1)
-      {
-        averageCount = (currentCount - fastCount[j]) * 12;
-        Serial.print(currentCount);
-        Serial.print("-");
-        Serial.print(fastCount[j]);
-        Serial.print("*");
-        Serial.println("12");
-      }
-      //60s
-      if (integrationMode == 2)
-      {
-        averageCount = currentCount - count[k]; // count[i] stores the value from 60 seconds ago
-        Serial.print(currentCount);
-        Serial.print("-");
-        Serial.println(count[k]);
-      }
-      //180 slowCount[k] is a datapoint from 1800ms ago
-      else if (integrationMode == 3)
-      {
-        averageCount = (currentCount - slowCount[l]) / 3;
-        Serial.print(currentCount);
-        Serial.print("-");
-        Serial.print(slowCount[l]);
-        Serial.print("/");
-        Serial.println("3");
-      }
-      Serial.println("Average before dead time");
-      Serial.println(averageCount);
-
-      averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
-
-      Serial.println("CPM:");
-      Serial.println(averageCount);
-      Serial.println("-------------------------");
-
-      if (doseUnits == 0)
-      {
-        doseRate = averageCount / float(conversionFactor);
-        totalDose = cumulativeCount / (60 * float(conversionFactor));
-        
-      }
-      else if (doseUnits == 1)
-      {
-        doseRate = averageCount / float(conversionFactor * 10.0);
-        totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
-        
-      }
-
+      homeRefreshPrev = homeRefreshCur;
       if (averageCount < conversionFactor/2) // 0.5 uSv/hr
         doseLevel = 0; // determines alert level displayed on homescreen
       else if (averageCount < alarmThreshold * conversionFactor)
@@ -669,7 +569,7 @@ void loop()
         }
       }
       Serial.println(currentCount);
-    } 
+    }
     // end of millis()-controlled block that runs once every second. The rest of the code on page 0 runs every loop
     if (currentCount > previousCount)
     {
@@ -696,23 +596,7 @@ void loop()
         {
           integrationMode = 0;
         }
-        currentCount = 0;
-        previousCount = 0;
-        for (int a = 0; a < osc_size; a++) // reset counts when integretation speed is changed
-        {
-          oneSecondCount[a] = 0;
-        }
-        for (int b = 0; b < fc_size; b++)
-        {
-          fastCount[b] = 0;
-        }
-        for (int c = 0; c < c_size; c++)
-        {
-          count[c] = 0;
-        }
-        for (int d = 0; d < sc_size; d++){
-          slowCount[d] = 0;
-        }
+        clearCount();
         if (integrationMode == 0) // change button based on touch and previous state
         {
 
@@ -845,13 +729,13 @@ void loop()
     if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button. draw homepage, reset counts and go back
       {
-        clearCount();
+        //clearCount();
         page = 0;
         drawHomePage();
       }
       else if ((x > tft.width() - (4 + 62) && x < (tft.width() - (4 + 62) + 132)) && (y > 271 && y < 315))
       {
-        clearCount();
+        //clearCount();
         setDefaultSettings();
         page = 0;
         drawHomePage();
@@ -1130,7 +1014,7 @@ void loop()
               {
                 page = 0;
                 drawHomePage();
-                clearCount();
+                //clearCount();
                 WiFi.disconnect();
                 WiFi.mode( WIFI_OFF );                // turn off wifi
                 WiFi.forceSleepBegin();
@@ -1250,7 +1134,7 @@ void loop()
       {
         page = 0;
         drawHomePage();
-        clearCount();
+        //clearCount();
       }
       else if ((x > 145 && x < 235) && (y > 271 && y < 315))
       {
@@ -1327,7 +1211,7 @@ void loop()
       {
         page = 0;
         drawHomePage();
-        clearCount();
+        //clearCount();
       }
     }
   }
@@ -2051,6 +1935,7 @@ void setDefaultDevice()
   //Default settings
   setDefaultSettings();
   //ClearLogs
+  clearCount();
   clearLogs();
 }
 
@@ -2094,4 +1979,122 @@ void getSettings()
     channelAPIkey[l - 70] = EEPROM.read(l);
   }
   Serial.println(channelAPIkey);
+}
+
+void gc()
+{
+  if (currentMillis - previousMillis >= geigerStoreInterval)
+  {
+    //
+    previousMillis = currentMillis;
+    oneSecondCount[i] = currentCount;
+    i++;
+    fastCount[j] = currentCount; // keep concurrent arrays of counts. Use only one depending on user choice
+    j++;
+    count[k] = currentCount;
+    k++;
+    slowCount[l] = currentCount;
+    l++;
+
+
+    if (i == osc_size)  
+    {
+      i = 0;
+    }
+    if (j == fc_size)
+    {
+      j = 0;
+    }
+    if (k == c_size)
+    {
+      k = 0;
+    }
+    if (l == sc_size)
+    {
+      l = 0;
+    }
+
+    //1s
+    if(integrationMode == 0)
+    {
+      averageCount = (currentCount - oneSecondCount[i]) * 60;
+      Serial.print(currentCount);
+      Serial.print("-");
+      Serial.print(oneSecondCount[i]);
+      Serial.print("*");
+      Serial.println("60");
+    }
+    //5s
+    if (integrationMode == 1)
+    {
+      averageCount = (currentCount - fastCount[j]) * 12;
+      Serial.print(currentCount);
+      Serial.print("-");
+      Serial.print(fastCount[j]);
+      Serial.print("*");
+      Serial.println("12");
+    }
+    //60s
+    if (integrationMode == 2)
+    {
+      averageCount = currentCount - count[k]; // count[i] stores the value from 60 seconds ago
+      Serial.print(currentCount);
+      Serial.print("-");
+      Serial.println(count[k]);
+    }
+    //180 slowCount[k] is a datapoint from 1800ms ago
+    else if (integrationMode == 3)
+    {
+      averageCount = (currentCount - slowCount[l]) / 3;
+      Serial.print(currentCount);
+      Serial.print("-");
+      Serial.print(slowCount[l]);
+      Serial.print("/");
+      Serial.println("3");
+    }
+    Serial.println("Average before dead time");
+    Serial.println(averageCount);
+
+    averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
+
+    Serial.println("CPM:");
+    Serial.println(averageCount);
+    Serial.println("-------------------------");
+
+    if (doseUnits == 0)
+    {
+      doseRate = averageCount / float(conversionFactor);
+      totalDose = cumulativeCount / (60 * float(conversionFactor));
+    }
+    else if (doseUnits == 1)
+    {
+      doseRate = averageCount / float(conversionFactor * 10.0);
+      totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
+    }
+  }
+}
+
+void batteryUpdate()
+{
+  if (currentMillis - previousMillis >= geigerStoreInterval)
+  {
+    if (batteryUpdateCounter == 300){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
+      batteryInput = analogRead(A0);
+      batteryInput = constrain(batteryInput, 590, 800);
+      batteryPercent = map(batteryInput, 590, 800, 0, 100);
+      batteryMapped = map(batteryPercent, 100, 0, 212, 233);
+      tft.fillRect(212, 6, 22, 10, ILI9341_BLACK);
+      if (batteryPercent < 10)
+      {
+        tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_RED);
+      }
+      else
+      {
+        tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
+      }
+      batteryUpdateCounter = 0;
+      Serial.println(batteryInput);
+      Serial.println(batteryPercent);
+    }
+  }
 }
