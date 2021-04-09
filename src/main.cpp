@@ -97,6 +97,8 @@ char dose[5];
 int doseLevel;               // determines home screen warning signs
 int previousDoseLevel;
 
+bool canceled = false; // cancel context
+
 bool ledSwitch = 1;
 bool buzzerSwitch = 1;
 bool wasTouched;
@@ -325,7 +327,7 @@ const unsigned char resetBitmap [] PROGMEM = {
 	0x00, 0x00, 0x03, 0xff, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xf0, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x3f, 0xfc, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00
 };
-
+bool touchHandler();
 void drawHomePage();              // page 0
 void drawSettingsPage();          // page 1
 void drawUnitsPage();             // page 2
@@ -339,6 +341,7 @@ void drawDeviceModePage();        // page 8
 void drawFrame();
 void drawBackButton();
 void drawCancelButton();
+void drawDialogueExitButton();
 void drawCloseButton();
 void drawBlankDialogueBox();
 void drawResetButton();
@@ -663,15 +666,7 @@ void loop()
       previousMicros = currentMicros;
     }
 
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched) // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0); // get touch point and map to screen pixels
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 162 && x < 238) && (y > 259 && y < 318))
       {
         integrationMode ++;
@@ -825,15 +820,7 @@ void loop()
   }
   else if (page == 1) // settings page. all display elements are drawn when drawSettingsPage() is called
   {
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button. draw homepage, reset counts and go back
       {
         clearCount();
@@ -871,15 +858,7 @@ void loop()
   }
   else if (page == 2) // units page
   {
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button
       {
         page = 1;
@@ -924,15 +903,7 @@ void loop()
     if (alarmThreshold < 10)
       tft.fillRect(169, 146, 22, 22, ILI9341_BLACK);
 
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+  if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
@@ -967,15 +938,7 @@ void loop()
     if (conversionFactor < 100)
       tft.fillRect(197, 146, 22, 22, ILI9341_BLACK);
 
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
@@ -1000,15 +963,8 @@ void loop()
   }
   else if (page == 5)  // Wifi page
   {
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
 
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
@@ -1060,6 +1016,7 @@ void loop()
         WiFiManagerParameter write_api("1", "Write API", writeAPISt, 20);
         wifiManager.addParameter(&channel_id);
         wifiManager.addParameter(&write_api);
+        wifiManager.setTimeout(60);
 
         wifiManager.startConfigPortal("GC20");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
@@ -1134,75 +1091,92 @@ void loop()
       {
         
         drawBlankDialogueBox();
+        drawDialogueExitButton();
         tft.setCursor(38, 100);
-        tft.println("Connecting to Wifi..");
+        tft.println("Connecting to");
+        tft.setCursor(38, 120);
+        tft.println("WiFi...");
         delay(100);
         Serial.println(ssid);
         Serial.println(password);
 
         WiFi.begin(ssid, password);
+        canceled = false;
 
         while (WiFi.status() != WL_CONNECTED) {    // Wait for the Wi-Fi to connect
+          if (touchHandler()){
+            if ((x > 4 && x < 62) && (y > 271 && y < 315)) //Cancel connecting
+              {
+                page = 0;
+                drawHomePage();
+                clearCount();
+                WiFi.disconnect();
+                WiFi.mode( WIFI_OFF );                // turn off wifi
+                WiFi.forceSleepBegin();
+                canceled = true;
+                break;
+              }
+            }
           delay(100);
         }
+        if (!canceled){
+          tft.setCursor(36, 160);
+          tft.println("Creating JSON file..");
+          createJsonFile();                         // reads logged data from EEPROM and creates a json file
+          Serial.println(jsonBuffer);
+          delay(1000);
+          tft.setCursor(70, 220);
+          tft.println("Uploading..");
+          delay(1000);
 
-        tft.setCursor(36, 160);
-        tft.println("Creating JSON file..");
-        createJsonFile();                         // reads logged data from EEPROM and creates a json file
-        Serial.println(jsonBuffer);
-        delay(1000);
-        tft.setCursor(70, 220);
-        tft.println("Uploading..");
-        delay(1000);
+          char secondHalf[50] = "\",\"updates\":";      
+          strcat(data, channelAPIkey);
+          strcat(data, secondHalf);               
 
-        char secondHalf[50] = "\",\"updates\":";      
-        strcat(data, channelAPIkey);
-        strcat(data, secondHalf);               
+          strcat(data,jsonBuffer);                // concatenate strings together and store in array named data
+          strcat(data,"}");
 
-        strcat(data,jsonBuffer);                // concatenate strings together and store in array named data
-        strcat(data,"}");
+          Serial.println(data);
 
-        Serial.println(data);
-
-        client.stop();
-        String data_length = String(strlen(data)+1);   
-        
-        if (client.connect(server, 80)) {          // post data to thingspeak
-          char temp1[100] = "POST /channels/";
-          char temp2[30] = "/bulk_update.json HTTP/1.1";
-          
-          strcat(temp1, channelID);
-          strcat(temp1, temp2);
-
-          client.println(temp1); 
-          client.println("Host: api.thingspeak.com");
-          client.println("User-Agent: mw.doc.bulk-update (Arduino ESP8266)");
-          client.println("Connection: close");
-          client.println("Content-Type: application/json");
-          client.println("Content-Length: "+data_length);
-          client.println();
-          client.println(data);
           client.stop();
-          
-          WiFi.disconnect();
-          WiFi.mode( WIFI_OFF );                // turn off wifi
-          WiFi.forceSleepBegin();
-          delay(1);
+          String data_length = String(strlen(data)+1);   
 
-          clearLogs();                 // erase logs and re-initialize the json buffer
-          tft.setCursor(43, 260);
-          tft.println("Resetting Device..");
-          delay(1000);
-          ESP.reset();                 
-        }
-        else 
-        {
-          tft.setCursor(50, 260);
-          tft.println("Failed to upload");
-          delay(1000);
-          ESP.reset();
-        }
-        
+          if (client.connect(server, 80)) {          // post data to thingspeak
+            char temp1[100] = "POST /channels/";
+            char temp2[30] = "/bulk_update.json HTTP/1.1";
+
+            strcat(temp1, channelID);
+            strcat(temp1, temp2);
+
+            client.println(temp1); 
+            client.println("Host: api.thingspeak.com");
+            client.println("User-Agent: mw.doc.bulk-update (Arduino ESP8266)");
+            client.println("Connection: close");
+            client.println("Content-Type: application/json");
+            client.println("Content-Length: "+data_length);
+            client.println();
+            client.println(data);
+            client.stop();
+
+            WiFi.disconnect();
+            WiFi.mode( WIFI_OFF );                // turn off wifi
+            WiFi.forceSleepBegin();
+            delay(1);
+
+            clearLogs();                 // erase logs and re-initialize the json buffer
+            tft.setCursor(43, 260);
+            tft.println("Resetting Device..");
+            delay(1000);
+            ESP.reset();
+          }
+          else 
+          {
+            tft.setCursor(50, 260);
+            tft.println("Failed to upload");
+            delay(1000);
+            ESP.reset();
+          }
+        } else canceled = false;
       }
       else if ((x > 3 && x < 237) && (y > 114 && y < 158)) // logging 
       {
@@ -1250,37 +1224,12 @@ void loop()
     tft.setCursor((185 - (intervalSize - 1) * 11), 146);
     tft.println(interval);
 
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 0;
         drawHomePage();
-        currentCount = 0;
-        previousCount = 0;
-        for (int a = 0; a < osc_size; a++)
-        {
-          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
-        }
-        for (int b = 0; b < fc_size; b++)
-        {
-          fastCount[b] = 0;
-        }
-        for (int c = 0; c < c_size; c++)
-        {
-          count[c] = 0;
-        }
-        for (int d = 0; d < sc_size; d++)
-        {
-          slowCount[d] = 0;
-        }
+        clearCount();
       }
       else if ((x > 145 && x < 235) && (y > 271 && y < 315))
       {
@@ -1352,51 +1301,18 @@ void loop()
       }
     }
     
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 70 && x < 170) && (y > 271 && y < 315))
       {
         page = 0;
         drawHomePage();
-        currentCount = 0;
-        previousCount = 0;
-        for (int a = 0; a < osc_size; a++)
-        {
-          oneSecondCount[a] = 0; // counts need to be reset to prevent errorenous readings
-        }
-        for (int b = 0; b < fc_size; b++)
-        {
-          fastCount[b] = 0;
-        }
-        for (int c = 0; c < c_size; c++)
-        {
-          count[c] = 0;
-        }
-        for (int d = 0; d < sc_size; d++)
-        {
-          slowCount[d] = 0;
-        }
+        clearCount();
       }
     }
   }
   else if (page == 8)          // device mode selection page
   {
-    if (!ts.touched())
-      wasTouched = 0;
-    if (ts.touched() && !wasTouched)
-    {
-      wasTouched = 1;
-      TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
-      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
-
+    if (touchHandler()){
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button
       {
         page = 5;
@@ -1435,6 +1351,20 @@ void loop()
       }
     }
   }
+}
+
+bool touchHandler(){
+    if (!ts.touched())
+      wasTouched = 0;
+    if (ts.touched() && !wasTouched)
+    {
+      wasTouched = 1;
+      TS_Point p = ts.getPoint();
+      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
+      y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
+      return true;
+    }
+    return false;
 }
 
 void drawHomePage()
@@ -1954,6 +1884,15 @@ void drawCancelButton()
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(72, 302);
   tft.println("CANCEL");
+}
+
+void drawDialogueExitButton()
+{
+  tft.fillRoundRect(4, 271, 62, 45, 3, 0x3B8F);
+  tft.drawRoundRect(4, 271, 62, 45, 3, ILI9341_WHITE);
+  tft.setFont(&FreeSans12pt7b);
+  tft.setCursor(6, 302);
+  tft.println("    X    ");
 }
 
 void drawCloseButton()
