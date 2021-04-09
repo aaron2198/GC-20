@@ -394,6 +394,7 @@ void setup()
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     drawBlankDialogueBox();
+    drawDialogueExitButton();
     tft.setTextSize(1);
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(ILI9341_WHITE);
@@ -404,6 +405,18 @@ void setup()
     while ((WiFi.status() != WL_CONNECTED) && (attempts < 300))
     {
       delay(100);
+      if (touchHandler()){
+        if ((x > 4 && x < 62) && (y > 271 && y < 315)) //Cancel connecting
+          {
+            page = 0;
+            clearCount();
+            WiFi.disconnect();
+            WiFi.mode( WIFI_OFF );                // turn off wifi
+            WiFi.forceSleepBegin();
+            canceled = true;
+            break;
+          }
+        }
       attempts ++;
     }
     if (attempts >= 300)
@@ -412,6 +425,12 @@ void setup()
       tft.setCursor(45, 200);
       tft.println("Failed to connect.");
       delay(1000);
+    }
+    else if (canceled) {
+      tft.setCursor(68, 200);
+      tft.println("Cancelled!");
+      delay(1000);
+      canceled = false;
     }
     else
     {
