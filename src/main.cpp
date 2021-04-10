@@ -44,7 +44,9 @@ XPT2046_Touchscreen ts(CS_PIN);
 //RefreshRate time in milliseconds between geiger counts and home page updates
 #define REFRESHRATE 200
 //Tube Deadtime
-#define DEADTIME 100
+#define DEADTIME 200
+//Size of webserver json Buffer
+#define SIZEWSJSONBUFFER 1000
 
 // WiFi variables
 unsigned long currentUploadTime;
@@ -60,6 +62,12 @@ char channelAPIkey[20]; // = "37SAHQPEQ7FOBC20";
 char server[] = "api.thingspeak.com";
 int attempts; // number of connection attempts when device starts up in monitoring mode
 WiFiClient client;
+
+//webserver Vars
+bool webserver = true; // disable by default;
+bool webserverInitialized = false;
+ESP8266WebServer ws(80);
+char wsJSONBuffer[SIZEWSJSONBUFFER];
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
@@ -366,6 +374,7 @@ void drawResetButton();
 long EEPROMReadlong(long address);
 void EEPROMWritelong(int address, long value); // logging functions
 void createJsonFile();
+void thingspeakUpload();
 void clearLogs();
 void clearCount();
 void clearLogs();
@@ -377,6 +386,15 @@ void getSettings();
 void gc();
 void batteryUpdate();
 void buzzerAndLED();
+
+//apiserver
+void emptyBuffer();
+void apiStart();
+void router();
+void handleGetCPM();
+void handleGetDoserate();
+void handleGetConfig();
+void handleNotFound();
 
 void setup()
 {
@@ -401,7 +419,7 @@ void setup()
 
   drawHomePage();
 
-  if (!deviceMode)
+  if (!deviceMode && !webserver)
   {
     WiFi.mode( WIFI_OFF );                // turn off wifi
     WiFi.forceSleepBegin();
@@ -670,51 +688,6 @@ void loop()
         drawSettingsPage();
       }
     }
-    
-    if (isLogging)
-    {
-      if(addr < 2100)
-      {
-        currentLogTime = millis();
-        if ((currentLogTime - previousLogTime) >= 600000)   // log every 10 minutes
-        {
-          EEPROMWritelong(addr, averageCount);
-          addr += 4;
-          EEPROMWritelong(96, addr); // write current address number to an adress just before the logged data
-          previousLogTime = currentLogTime;
-          EEPROM.commit();
-        }
-      }
-    }
-    if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
-    {
-      currentUploadTime = millis();
-      if ((currentUploadTime - previousUploadTime) > 300000)
-      {
-        previousUploadTime = currentUploadTime;
-        if (client.connect(server, 80))
-        {
-          String postStr = channelAPIkey;
-          postStr += "&field2=";
-          postStr += String(averageCount);
-          postStr += "\r\n\r\n";
-          char temp[50] = "X-THINGSPEAKAPIKEY:";
-          strcat(temp, channelAPIkey);
-          strcat(temp, "\n");
-          client.print("POST /update HTTP/1.1\n");
-          client.print("Host: api.thingspeak.com\n");
-          client.print("Connection: close\n");
-          client.print(temp);
-          client.print("Content-Type: application/x-www-form-urlencoded\n");
-          client.print("Content-Length: ");
-          client.print(postStr.length());
-          client.print("\n\n");
-          client.print(postStr);
-          Serial.println(postStr);
-        }
-        client.stop();
-      }
-    }
   }
   else if (page == 1) // settings page. all display elements are drawn when drawSettingsPage() is called
   {
@@ -914,7 +887,7 @@ void loop()
         WiFiManagerParameter write_api("1", "Write API", writeAPISt, 20);
         wifiManager.addParameter(&channel_id);
         wifiManager.addParameter(&write_api);
-        wifiManager.setTimeout(WIFITIMEOUT);
+        wifiManager.setConfigPortalTimeout(WIFITIMEOUT);
         wifiManager.startConfigPortal("GC20");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
         strcpy(channelIDSt, channel_id.getValue());
@@ -1248,6 +1221,24 @@ void loop()
       }
     }
   }
+  if (webserver && (WiFi.status() == WL_CONNECTED)) {
+    if (!webserverInitialized){
+      Serial.println("API starting");
+      apiStart();
+      webserverInitialized = true;
+      Serial.println("API Started");
+    }
+    Serial.println("Waiting on client request");
+    ws.handleClient();
+  }
+  if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
+  {
+    //thingspeakUpload();
+  }
+  if (isLogging)
+  {
+    //tenMinLogToEEPROM();
+  }
 }
 
 bool touchHandler(){
@@ -1413,7 +1404,7 @@ void drawHomePage()
     tft.fillRect(175, 2, 18, 18, ILI9341_BLACK);
   }
   
-  if (deviceMode)
+  if (WiFi.status() == WL_CONNECTED)
   {
     tft.drawBitmap(188, 1, wifiBitmap, 19, 19, ILI9341_WHITE);
   }
@@ -1764,7 +1755,7 @@ void drawFrame(){
     tft.fillRect(175, 2, 18, 18, ILI9341_BLACK);
   }
   
-  if (deviceMode)
+  if (WiFi.status() == WL_CONNECTED)
   {
     tft.drawBitmap(188, 1, wifiBitmap, 18, 18, ILI9341_WHITE);
   }
@@ -1849,6 +1840,52 @@ void createJsonFile()
   size_t len = strlen(jsonBuffer);
   jsonBuffer[len-1] = ']';
 
+}
+
+void thingspeakUpload()
+{
+  currentUploadTime = millis();
+  if ((currentUploadTime - previousUploadTime) > 300000)
+  {
+    previousUploadTime = currentUploadTime;
+    if (client.connect(server, 80))
+    {
+      String postStr = channelAPIkey;
+      postStr += "&field2=";
+      postStr += String(averageCount);
+      postStr += "\r\n\r\n";
+      char temp[50] = "X-THINGSPEAKAPIKEY:";
+      strcat(temp, channelAPIkey);
+      strcat(temp, "\n");
+      client.print("POST /update HTTP/1.1\n");
+      client.print("Host: api.thingspeak.com\n");
+      client.print("Connection: close\n");
+      client.print(temp);
+      client.print("Content-Type: application/x-www-form-urlencoded\n");
+      client.print("Content-Length: ");
+      client.print(postStr.length());
+      client.print("\n\n");
+      client.print(postStr);
+      Serial.println(postStr);
+    }
+    client.stop();
+  }
+}
+
+void tenMinLogToEEPROM()
+{
+  if(addr < 2100)
+  {
+    currentLogTime = millis();
+    if ((currentLogTime - previousLogTime) >= 600000)   // log every 10 minutes
+    {
+      EEPROMWritelong(addr, averageCount);
+      addr += 4;
+      EEPROMWritelong(96, addr); // write current address number to an adress just before the logged data
+      previousLogTime = currentLogTime;
+      EEPROM.commit();
+    }
+  }
 }
 
 void drawBlankDialogueBox()
@@ -2111,4 +2148,73 @@ void buzzerAndLED()
     digitalWrite(D0, LOW);
     previousMicros = currentMicros;
   }
+}
+
+void emptyBuffer()
+{
+  memset(wsJSONBuffer, 0, SIZEWSJSONBUFFER);
+}
+
+void apiStart()
+{
+  ws.enableCORS(true);
+  router();
+  ws.begin();
+}
+
+void router()
+{
+  ws.on("/cpm", handleGetCPM);
+  ws.on("/doserate", handleGetDoserate);
+  ws.on("/config", handleGetConfig);
+  ws.onNotFound(handleNotFound);
+  Serial.println("HTTP server started");
+
+}
+// Device API handler
+void handleGetCPM()
+{
+  sprintf(wsJSONBuffer, "{\n\"CPM\": %lu\n}\n",  averageCount);
+  ws.send(200, "text/json", wsJSONBuffer);
+  emptyBuffer();
+}
+
+void handleGetDoserate()
+{
+  sprintf(wsJSONBuffer, "{\n\"doserate\": %f\n}\n",  doseRate);
+  ws.send(200, "text/json", wsJSONBuffer);
+  emptyBuffer();
+}
+
+void handleGetConfig()
+{
+  sprintf(
+      wsJSONBuffer, 
+  "{\n\
+    \"doseUnits\": %i,\n\
+    \"alarmThreshold\": %i,\n\
+    \"deviceMode\": \"%s\",\n\
+    \"isLogging\": \"%s\",\n\
+    \"addr\": %i,\n\
+    \"conversionFactor\": %i,\n\
+    \"ssid\": \"%s\",\n\
+    \"password\": \"%s\",\n\
+    \"channelAPIkey\": \"%s\"\n}\n",
+        doseUnits,
+        alarmThreshold,
+        deviceMode ? "true" : "false",
+        isLogging ? "true" : "false",
+        addr,
+        conversionFactor,
+        ssid,
+        password,
+        channelAPIkey
+    );
+    ws.send(200, "text/json", wsJSONBuffer);
+    emptyBuffer();
+}
+
+void handleNotFound()
+{
+  ws.send(404, "text/plain", "404: Not found"); // Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
 }
